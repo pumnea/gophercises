@@ -2,4 +2,4 @@
 
 <!--toc:start-->
 - [Solutions for Gophercises](#solutions-for-gophercises)
-<!--toc:end-->
+[Quiz](/quiz/README.md)<!--toc:end-->
