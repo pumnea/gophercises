@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"os"
 	"strings"
+	"time"
 )
 
 type Problem struct {
@@ -20,6 +21,7 @@ type Problem struct {
 func main() {
 	// Parse command-line flags
 	filePath := flag.String("file", "problems.csv", "path to a CSV file in format 'question,answer'")
+	timeLimit := flag.Int("limit", 30, "time limit for quiz in seconds")
 	flag.Parse()
 
 	// Open and read the CSV file
@@ -43,9 +45,14 @@ func main() {
 	// Shuffle the questions
 	shuffleProblems(problems)
 
+	// Create timer
+	timer := time.NewTimer(time.Duration(*timeLimit) * time.Second)
+	defer timer.Stop()
+
 	// Run the quiz
-	correct := runQuiz(problems, os.Stdin, os.Stdout)
-	fmt.Printf("\nScore: %d correct out of %d total\n", correct, len(problems))
+	correct, attempted := runQuiz(problems, os.Stdin, os.Stdout, timer)
+	fmt.Printf("\nScore: %d correct out of %d attempted (total questions: %d)\n",
+		correct, attempted, len(problems))
 }
 
 // readCSV reads a CSV file from an io.Reader and returns its contents.
@@ -72,19 +79,35 @@ func parseProblems(lines [][]string) ([]Problem, error) {
 }
 
 // runQuiz administers the quiz and returns the number of correct answers.
-func runQuiz(problems []Problem, input io.Reader, output io.Writer) int {
+func runQuiz(problems []Problem, input io.Reader, output io.Writer, timer *time.Timer) (correct, attempted int) {
 	scanner := bufio.NewScanner(input)
-	correct := 0
+
+	answerCh := make(chan string)
 
 	for i, p := range problems {
 		fmt.Fprintf(output, "%d> %s = ", i+1, p.question)
-		scanner.Scan()
-		answer := strings.TrimSpace(scanner.Text())
-		if answer == p.answer {
-			correct++
+
+		go func() {
+			if scanner.Scan() {
+				answerCh <- strings.TrimSpace(scanner.Text())
+			} else {
+				answerCh <- ""
+			}
+		}()
+
+		select {
+		case <-timer.C:
+			fmt.Fprintln(output, "\nTime's up!")
+			return correct, attempted
+		case answer := <-answerCh:
+			attempted++
+			if strings.EqualFold(answer, p.answer) {
+				correct++
+			}
 		}
 	}
-	return correct
+
+	return correct, attempted
 }
 
 // shuffleProblems randomizes the order of quiz problems.
